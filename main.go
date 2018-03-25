@@ -154,6 +154,7 @@ func aggregate(ch chan reqType, stopChan chan int) {
 			send(vals[0:count])
 			logger.Println(fmt.Sprintf("Sended %d values", count))
 			count = 0
+			start = time.Now()
 		}
 
 		if time.Now().Sub(start).Seconds() >= float64(period) {
