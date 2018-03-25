@@ -148,23 +148,25 @@ func aggregate(ch chan reqType, stopChan chan int) {
 		if more {
 			count++
 			vals[count-1] = message
-
-			if count >= int(batch) {
-				send(vals[0:count])
-				logger.Println(fmt.Sprintf("Sended %d values", count))
-				count = 0
-			}
 		}
 
-		if time.Now().Sub(start).Seconds() >= float64(period) || !more {
+		if count >= int(batch) {
 			send(vals[0:count])
 			logger.Println(fmt.Sprintf("Sended %d values", count))
 			count = 0
+		}
 
+		if time.Now().Sub(start).Seconds() >= float64(period) {
+			send(vals[0:count])
+			logger.Println(fmt.Sprintf("Sended %d values", count))
+			count = 0
 			start = time.Now()
 		}
 
 		if !more {
+			send(vals[0:count])
+			logger.Println(fmt.Sprintf("Sended %d values", count))
+
 			logger.Println("No more messages")
 			stopChan <- 1
 			break
@@ -249,8 +251,9 @@ func send(vals []reqType) {
 		}
 	}
 
-	// Clean slices in map
+	// Clean
 	for dt := range byDate {
+		byDate[dt] = nil
 		delete(byDate, dt)
 	}
 }
