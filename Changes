@@ -1,3 +1,6 @@
+0.3 2018-03-25
+  - Fix possible memory leak.
+
 0.2 2018-03-25
   - Remove buggy RELP support. Rsyslog version not compatible with Go.
   - Add syslog protocol support.

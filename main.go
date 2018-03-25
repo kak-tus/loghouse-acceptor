@@ -70,7 +70,7 @@ func connectDB() {
 }
 
 func listenSyslog(ch chan reqType) {
-	channel := make(syslog.LogPartsChannel)
+	channel := make(syslog.LogPartsChannel, 100000)
 	handler := syslog.NewChannelHandler(channel)
 
 	server := syslog.NewServer()
@@ -247,6 +247,11 @@ func send(vals []reqType) {
 			errLogger.Println(err)
 			return
 		}
+	}
+
+	// Clean slices in map
+	for dt := range byDate {
+		delete(byDate, dt)
 	}
 }
 
