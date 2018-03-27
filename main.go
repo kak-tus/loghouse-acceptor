@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +35,8 @@ var db *sql.DB
 var logger = log.New(os.Stdout, "", log.LstdFlags)
 var errLogger = log.New(os.Stderr, "", log.LstdFlags)
 
+const partitionFormat = "2006010215"
+
 func main() {
 	connectDB()
 
@@ -42,6 +46,8 @@ func main() {
 
 	go listenSyslog(ch)
 	go healthcheck()
+
+	go createPartitions()
 
 	<-stopChan
 	logger.Println("Exit")
@@ -191,7 +197,7 @@ func send(vals []reqType) {
 		vals[i].ToCHtimestamp = dt.Format("2006-01-02 15:04:05")
 		vals[i].ToCHnsec = dt.Nanosecond()
 
-		byDate[dt.Format("20060102")] = append(byDate[dt.Format("20060102")], vals[i])
+		byDate[dt.Format(partitionFormat)] = append(byDate[dt.Format(partitionFormat)], vals[i])
 	}
 
 	for dt, dtVals := range byDate {
@@ -290,5 +296,57 @@ func healthcheck() {
 	err := srv.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		errLogger.Panicln(err)
+	}
+}
+func createPartitions() {
+	ticker := time.NewTicker(time.Hour + time.Second*time.Duration(rand.Intn(100)))
+
+	for {
+		<-ticker.C
+		logger.Println("Check partitions")
+
+		// Start create partitions from some times ago
+		// to allow recreate partitions in case of stopped daemon for some time
+		dt := time.Now().Add(-time.Hour * 24)
+
+		for i := 1; i <= 48; i++ {
+			partition := dt.Format(partitionFormat)
+			dt = dt.Add(time.Hour)
+
+			sql := "SELECT 1 FROM system.tables WHERE database = 'logs'	AND name = 'logs" +
+				partition + "';"
+
+			rows, err := db.Query(sql)
+			if err != nil {
+				errLogger.Println(err)
+				continue
+			}
+
+			if rows.Next() {
+				rows.Close()
+				continue
+			}
+
+			rows.Close()
+			logger.Println("Create partition " + partition)
+
+			sql = "CREATE TABLE logs.logs" + partition +
+				" ( date Date, timestamp DateTime, nsec UInt32, source String," +
+				" namespace String, host String, pod_name String, container_name String," +
+				" stream String, labels Nested ( names String, values String )," +
+				" string_fields Nested ( names String, values String )," +
+				"number_fields Nested ( names String, values Float64 )," +
+				"boolean_fields Nested (names String, values Float64)," +
+				"`null_fields.names` Array(String), phone UInt64, request_id String," +
+				" order_id String, subscription_id String)" +
+				" ENGINE = MergeTree( date, ( timestamp, nsec, phone, request_id," +
+				" order_id, subscription_id), 32768);"
+
+			_, err = db.Exec(sql)
+			if err != nil {
+				errLogger.Println(err)
+				continue
+			}
+		}
 	}
 }
