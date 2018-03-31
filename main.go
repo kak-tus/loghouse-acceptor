@@ -435,7 +435,7 @@ func parse(val reqType) []interface{} {
 					}
 				} else if key == "id" {
 					_, ok := mapped["request_id"]
-					if ok {
+					if !ok {
 						switch val.(type) {
 						case string:
 							requestID = val.(string)
