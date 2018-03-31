@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,18 +14,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/json-iterator/go"
 	"github.com/kshvakov/clickhouse"
 	syslog "gopkg.in/mcuadros/go-syslog.v2"
 )
 
 type reqType struct {
-	Time          string `json:"time"`
-	Tag           string `json:"tag"`
-	Hostname      string `json:"hostname"`
-	Program       string `json:"program"`
-	SeverityLabel string `json:"severity_label"`
-	FacilityLabel string `json:"facility_label"`
-	Msg           string `json:"msg"`
+	Time          time.Time
+	Level         string
+	Tag           string
+	Pid           string
+	Hostname      string
+	Facility      string
+	Msg           string
 	ToCHtimestamp string
 	ToCHnsec      int
 	ToCHdate      string
@@ -36,15 +38,19 @@ var errLogger = log.New(os.Stderr, "", log.LstdFlags)
 
 const partitionFormat = "2006010215"
 
+var decoder jsoniter.API
+
 func main() {
-	connectDB()
+	db = connectDB()
+
+	decoder = jsoniter.Config{UseNumber: true}.Froze()
 
 	ch := make(chan reqType, 1000000)
 	stopChan := make(chan int)
 	go aggregate(ch, stopChan)
 
 	go listenSyslog(ch)
-	go healthcheck()
+	go listenHealthcheck()
 
 	go createPartitions()
 
@@ -52,11 +58,10 @@ func main() {
 	logger.Println("Exit")
 }
 
-func connectDB() {
+func connectDB() *sql.DB {
 	addr := os.Getenv("CLICKHOUSE_ADDR")
 
-	var err error
-	db, err = sql.Open("clickhouse", "tcp://"+addr+"?write_timeout=60")
+	db, err := sql.Open("clickhouse", "tcp://"+addr+"?write_timeout=60")
 	if err != nil {
 		errLogger.Panicln(err)
 	}
@@ -71,7 +76,7 @@ func connectDB() {
 		}
 	}
 
-	return
+	return db
 }
 
 func listenSyslog(ch chan reqType) {
@@ -92,9 +97,9 @@ func listenSyslog(ch chan reqType) {
 	stopSignal := make(chan os.Signal, 1)
 	signal.Notify(stopSignal, syscall.SIGINT, syscall.SIGTERM)
 
-	severityLabels := map[int]string{0: "emerg", 1: "alert", 2: "crit", 3: "error",
-		4: "warning", 5: "notice", 6: "info", 7: "debug"}
-	facilityLabels := map[int]string{0: "kern", 1: "user", 2: "mail", 3: "daemon",
+	levels := map[int]string{0: "FATAL", 1: "FATAL", 2: "FATAL", 3: "ERROR",
+		4: "WARN", 5: "INFO", 6: "INFO", 7: "DEBUG"}
+	facilities := map[int]string{0: "kern", 1: "user", 2: "mail", 3: "daemon",
 		4: "auth", 5: "syslog", 6: "lpr", 7: "news", 8: "uucp", 9: "cron", 10: "security",
 		11: "ftp", 12: "ntp", 13: "logaudit", 14: "logalert", 15: "clock", 16: "local0",
 		17: "local1", 18: "local2", 19: "local3", 20: "local4", 21: "local5",
@@ -105,13 +110,13 @@ func listenSyslog(ch chan reqType) {
 			select {
 			case message := <-channel:
 				parsed := reqType{
-					Time:          message["timestamp"].(time.Time).Format(time.RFC3339),
-					Tag:           message["proc_id"].(string),
-					Hostname:      message["hostname"].(string),
-					Program:       message["app_name"].(string),
-					SeverityLabel: severityLabels[message["severity"].(int)],
-					FacilityLabel: facilityLabels[message["facility"].(int)],
-					Msg:           strings.TrimLeft(message["message"].(string), " ")}
+					Time:     message["timestamp"].(time.Time),
+					Level:    levels[message["severity"].(int)],
+					Tag:      message["app_name"].(string),
+					Pid:      message["proc_id"].(string),
+					Hostname: message["hostname"].(string),
+					Facility: facilities[message["facility"].(int)],
+					Msg:      strings.Trim(message["message"].(string), " ")}
 
 				ch <- parsed
 			case <-stopSignal:
@@ -184,13 +189,7 @@ func send(vals []reqType) {
 	byDate := make(map[string][]reqType)
 
 	for i := 0; i < len(vals); i++ {
-		dt, err := time.Parse(time.RFC3339, vals[i].Time)
-		if err != nil {
-			errLogger.Println("RFC3339 date parse failed: ", err)
-			continue
-		}
-
-		dt = dt.In(time.UTC)
+		dt := vals[i].Time.In(time.UTC)
 
 		vals[i].ToCHdate = dt.Format("2006-01-02")
 		vals[i].ToCHtimestamp = dt.Format("2006-01-02 15:04:05")
@@ -207,12 +206,12 @@ func send(vals []reqType) {
 		}
 
 		sql := "INSERT INTO logs.logs" + dt +
-			" (date,timestamp,nsec,source,namespace,host,pod_name,container_name,stream," +
-			"`labels.names`,`labels.values`,`string_fields.names`,`string_fields.values`," +
+			" (date,timestamp,nsec,host,level,tag,pid,caller,msg," +
+			"`string_fields.names`,`string_fields.values`," +
 			"`number_fields.names`,`number_fields.values`,`boolean_fields.names`," +
 			"`boolean_fields.values`,`null_fields.names`,phone,request_id,order_id," +
 			"subscription_id) " +
-			"VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);"
+			"VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);"
 
 		stmt, err := tx.Prepare(sql)
 		if err != nil {
@@ -222,21 +221,16 @@ func send(vals []reqType) {
 		}
 
 		for _, val := range dtVals {
-			labelsNames := [0]string{}
-			labelsValues := [0]string{}
-			stringNames := clickhouse.Array([]string{"msg"})
-			stringValues := clickhouse.Array([]string{val.Msg})
-			numbersNames := [0]string{}
-			numbersValues := [0]int{}
-			boolNames := [0]string{}
-			boolValues := [0]int{}
-			nullNames := [0]string{}
+			args := []interface{}{
+				val.ToCHdate,
+				val.ToCHtimestamp,
+				val.ToCHnsec,
+				val.Hostname}
 
-			_, err := stmt.Exec(val.ToCHdate, val.ToCHtimestamp, val.ToCHnsec, "",
-				val.FacilityLabel, val.Hostname, val.Tag, val.Program, val.SeverityLabel,
-				labelsNames, labelsValues, stringNames, stringValues, numbersNames,
-				numbersValues, boolNames, boolValues, nullNames, 79031234567,
-				"", "", "")
+			parsed := parse(val)
+			args = append(args, parsed...)
+
+			_, err := stmt.Exec(args...)
 
 			if err != nil {
 				tx.Rollback()
@@ -264,7 +258,7 @@ func send(vals []reqType) {
 	}
 }
 
-func healthcheck() {
+func listenHealthcheck() {
 	srv := &http.Server{Addr: ":9001"}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -297,6 +291,219 @@ func healthcheck() {
 		errLogger.Panicln(err)
 	}
 }
+
+func parse(val reqType) []interface{} {
+	var jsons []interface{}
+
+	str := val.Msg
+
+	// Full json string
+	if strings.Index(str, "{") == 0 && str[len(str)-1:] == "}" {
+		var parsed interface{}
+		err := decoder.UnmarshalFromString(str, &parsed)
+		if err == nil {
+			jsons = append(jsons, parsed)
+		}
+	} else if strings.Index(str, "{") >= 0 {
+		// Special vendor-locked case
+		if strings.Index(str, " c{") >= 0 && str[len(str)-1:] == "}" {
+			from := strings.Index(str, " c{")
+
+			var parsed interface{}
+			err := decoder.UnmarshalFromString(str[from+2:], &parsed)
+			if err == nil {
+				jsons = append(jsons, parsed)
+				str = str[:from]
+			}
+		}
+
+		if strings.Index(str, "{") >= 0 && strings.LastIndex(str, "}") >= 0 {
+			from := strings.Index(str, "{")
+			to := strings.LastIndex(str, "}")
+
+			var parsed interface{}
+			err := decoder.UnmarshalFromString(str[from:to+1], &parsed)
+			if err == nil {
+				jsons = append(jsons, parsed)
+
+				// Special vendor-locked case
+				if str[from-1:from] == "j" {
+					str = str[:from-1] + str[to+1:]
+				} else {
+					str = str[:from] + str[to+1:]
+				}
+			}
+		}
+	}
+
+	var stringNames []string
+	var stringVals []string
+	var boolNames []string
+	var boolVals []uint8
+	var numNames []string
+	var numVals []float64
+	var nullNames []string
+
+	phone := 0
+	requestID := ""
+	orderID := ""
+	subscriptionID := ""
+	caller := ""
+
+	level := val.Level
+	tag := val.Tag
+	pid := val.Pid
+
+	if len(jsons) > 0 {
+		for _, js := range jsons {
+			mapped := js.(map[string]interface{})
+
+			for key, val := range mapped {
+				// Some vendor-locked logic
+				if key == "phone" && phone == 0 {
+					switch val.(type) {
+					case string:
+						conv, err := strconv.Atoi(val.(string))
+						if err == nil {
+							phone = conv
+							continue
+						}
+					case json.Number:
+						conv, err := strconv.Atoi(string(val.(json.Number)))
+						if err == nil {
+							phone = conv
+							continue
+						}
+					}
+				} else if key == "request_id" && requestID == "" {
+					switch val.(type) {
+					case string:
+						requestID = val.(string)
+						continue
+					}
+				} else if key == "order_id" && orderID == "" {
+					switch val.(type) {
+					case string:
+						orderID = val.(string)
+						continue
+					}
+				} else if key == "subscription_id" && subscriptionID == "" {
+					switch val.(type) {
+					case string:
+						subscriptionID = val.(string)
+						continue
+					}
+				} else if key == "level" {
+					switch val.(type) {
+					case string:
+						conv := val.(string)
+
+						if conv == "DEBUG" || conv == "INFO" ||
+							conv == "WARN" || conv == "ERROR" ||
+							conv == "FATAL" {
+							level = conv
+						} else if conv == "TRACE" {
+							level = "DEBUG"
+						} else if conv == "PANIC" {
+							level = "FATAL"
+						} else {
+							level = "DEBUG"
+						}
+
+						continue
+					}
+				} else if key == "tag" {
+					switch val.(type) {
+					case string:
+						tag = val.(string)
+						continue
+					}
+				} else if key == "pid" {
+					switch val.(type) {
+					case string:
+						pid = val.(string)
+						continue
+					case json.Number:
+						pid = string(val.(json.Number))
+						continue
+					}
+				} else if key == "caller" {
+					switch val.(type) {
+					case string:
+						caller = val.(string)
+						continue
+					}
+				}
+
+				switch val.(type) {
+				case string:
+					stringNames = append(stringNames, key)
+					stringVals = append(stringVals, val.(string))
+				case bool:
+					var conv uint8
+					if val.(bool) {
+						conv = 1
+					} else {
+						conv = 0
+					}
+
+					boolNames = append(boolNames, key)
+					boolVals = append(boolVals, conv)
+				case json.Number:
+					if strings.Index(string(val.(json.Number)), ".") >= 0 {
+						conv, err := strconv.ParseFloat(string(val.(json.Number)), 64)
+						if err == nil {
+							numNames = append(numNames, key)
+							numVals = append(numVals, conv)
+						}
+					} else {
+						conv, err := strconv.Atoi(string(val.(json.Number)))
+						if err == nil {
+							numNames = append(numNames, key)
+							numVals = append(numVals, float64(conv))
+						}
+					}
+				case nil:
+					nullNames = append(nullNames, key)
+				default:
+					conv, err := decoder.Marshal(val)
+					if err == nil {
+						stringNames = append(stringNames, key)
+						stringVals = append(stringVals, string(conv))
+					}
+				}
+			}
+		}
+	}
+
+	var res []interface{}
+
+	res = append(res, level, tag, pid, caller, str,
+		clickhouse.Array(stringNames), clickhouse.Array(stringVals))
+
+	if len(numNames) > 0 {
+		res = append(res, clickhouse.Array(numNames), clickhouse.Array(numVals))
+	} else {
+		res = append(res, [0]string{}, [0]float64{})
+	}
+
+	if len(boolNames) > 0 {
+		res = append(res, clickhouse.Array(boolNames), clickhouse.Array(boolVals))
+	} else {
+		res = append(res, [0]string{}, [0]int{})
+	}
+
+	if len(nullNames) > 0 {
+		res = append(res, clickhouse.Array(nullNames))
+	} else {
+		res = append(res, [0]int{})
+	}
+
+	res = append(res, phone, requestID, orderID, subscriptionID)
+
+	return res
+}
+
 func createPartitions() {
 	ticker := time.NewTicker(time.Hour + time.Second*time.Duration(rand.Intn(100)))
 
@@ -330,16 +537,16 @@ func createPartitions() {
 			logger.Println("Create partition " + partition)
 
 			sql = "CREATE TABLE logs.logs" + partition +
-				" ( date Date, timestamp DateTime, nsec UInt32, source String," +
-				" namespace String, host String, pod_name String, container_name String," +
-				" stream String, labels Nested ( names String, values String )," +
+				" ( date Date, timestamp DateTime, nsec UInt32, namespace String," +
+				" level String, tag String, host String, pid String, caller String," +
+				" msg String, labels Nested ( names String, values String )," +
 				" string_fields Nested ( names String, values String )," +
-				"number_fields Nested ( names String, values Float64 )," +
-				"boolean_fields Nested (names String, values Float64)," +
-				"`null_fields.names` Array(String), phone UInt64, request_id String," +
-				" order_id String, subscription_id String)" +
-				" ENGINE = MergeTree( date, ( timestamp, nsec, phone, request_id," +
-				" order_id, subscription_id), 32768);"
+				" number_fields Nested ( names String, values Float64 )," +
+				" boolean_fields Nested ( names String, values UInt8 )," +
+				" `null_fields.names` Array(String), phone UInt64, request_id String," +
+				" order_id String, subscription_id String )" +
+				" ENGINE = MergeTree( date, ( timestamp, nsec, level, tag, host," +
+				" phone, request_id, order_id, subscription_id ), 32768 );"
 
 			_, err = db.Exec(sql)
 			if err != nil {
