@@ -381,6 +381,25 @@ func parse(val reqType) []interface{} {
 						requestID = val.(string)
 						continue
 					}
+				} else if key == "id" {
+					_, ok := mapped["request_id"]
+					if !ok {
+						switch val.(type) {
+						case string:
+							requestID = val.(string)
+							continue
+						}
+					}
+				} else if key == "msg_id" {
+					_, ok1 := mapped["request_id"]
+					_, ok2 := mapped["id"]
+					if !ok1 && !ok2 {
+						switch val.(type) {
+						case string:
+							requestID = val.(string)
+							continue
+						}
+					}
 				} else if key == "order_id" {
 					switch val.(type) {
 					case string:
@@ -432,15 +451,6 @@ func parse(val reqType) []interface{} {
 					case string:
 						caller = val.(string)
 						continue
-					}
-				} else if key == "id" {
-					_, ok := mapped["request_id"]
-					if !ok {
-						switch val.(type) {
-						case string:
-							requestID = val.(string)
-							continue
-						}
 					}
 				}
 
