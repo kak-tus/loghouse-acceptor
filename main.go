@@ -360,7 +360,7 @@ func parse(val reqType) []interface{} {
 
 			for key, val := range mapped {
 				// Some vendor-locked logic
-				if key == "phone" && phone == 0 {
+				if key == "phone" {
 					switch val.(type) {
 					case string:
 						conv, err := strconv.Atoi(val.(string))
@@ -375,19 +375,19 @@ func parse(val reqType) []interface{} {
 							continue
 						}
 					}
-				} else if key == "request_id" && requestID == "" {
+				} else if key == "request_id" {
 					switch val.(type) {
 					case string:
 						requestID = val.(string)
 						continue
 					}
-				} else if key == "order_id" && orderID == "" {
+				} else if key == "order_id" {
 					switch val.(type) {
 					case string:
 						orderID = val.(string)
 						continue
 					}
-				} else if key == "subscription_id" && subscriptionID == "" {
+				} else if key == "subscription_id" {
 					switch val.(type) {
 					case string:
 						subscriptionID = val.(string)
@@ -432,6 +432,15 @@ func parse(val reqType) []interface{} {
 					case string:
 						caller = val.(string)
 						continue
+					}
+				} else if key == "id" {
+					_, ok := mapped["request_id"]
+					if ok {
+						switch val.(type) {
+						case string:
+							requestID = val.(string)
+							continue
+						}
 					}
 				}
 
