@@ -303,6 +303,7 @@ func parse(val reqType) []interface{} {
 		err := decoder.UnmarshalFromString(str, &parsed)
 		if err == nil {
 			jsons = append(jsons, parsed)
+			str = ""
 		}
 	} else if strings.Index(str, "{") >= 0 {
 		// Special vendor-locked case
@@ -353,6 +354,53 @@ func parse(val reqType) []interface{} {
 	level := val.Level
 	tag := val.Tag
 	pid := val.Pid
+
+	// Some vendor-locked logic
+	// Extract caller, pid, level from string
+	if strings.Index(str, "[") == 0 {
+		closeBracket := strings.Index(str, "]")
+		if closeBracket > 0 {
+			firstSpace := strings.Index(str, " ")
+
+			if firstSpace > 0 && firstSpace < closeBracket {
+				secondSpace := strings.Index(str[firstSpace+1:], " ")
+
+				if secondSpace > 0 && firstSpace+secondSpace+1 < closeBracket {
+					_, err := strconv.Atoi(str[firstSpace+1 : firstSpace+secondSpace+1])
+
+					if err == nil {
+						pid = str[firstSpace+1 : firstSpace+secondSpace+1]
+						caller = str[firstSpace+secondSpace+2 : closeBracket]
+						str = str[closeBracket+1:]
+
+						space := strings.Index(str[1:], " ")
+						if space > 0 {
+							levelFromStr := str[1 : space+1]
+
+							if levelFromStr == "EMERG" || levelFromStr == "ALERT" ||
+								levelFromStr == "CRIT" {
+								level = "FATAL"
+							} else if levelFromStr == "ERR" {
+								level = "ERROR"
+							} else if levelFromStr == "WARN" {
+								level = "ERROR"
+							} else if levelFromStr == "NOTICE" {
+								level = "INFO"
+							} else if levelFromStr == "INFO" || levelFromStr == "DEBUG" {
+								level = levelFromStr
+							} else if levelFromStr == "TRACE" {
+								level = "DEBUG"
+							} else {
+								level = "DEBUG"
+							}
+
+							str = str[space+2:]
+						}
+					}
+				}
+			}
+		}
+	}
 
 	if len(jsons) > 0 {
 		for _, js := range jsons {
