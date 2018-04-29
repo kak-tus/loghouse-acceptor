@@ -15,17 +15,13 @@ func (d *DB) CreatePartitions(partitionFormat string) {
 	stopSignal := make(chan os.Signal, 1)
 	signal.Notify(stopSignal, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		<-stopSignal
-		d.logger.Println("Got stop signal, stop listening create partitions")
-		ticker.Stop()
-	}()
-
 	for {
-		_, more := <-ticker.C
-
-		if !more {
-			break
+		select {
+		case <-ticker.C:
+		case <-stopSignal:
+			d.logger.Println("Got stop signal, stop listening create partitions")
+			ticker.Stop()
+			return
 		}
 
 		d.logger.Println("Check partitions")

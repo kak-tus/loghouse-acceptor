@@ -72,5 +72,6 @@ func (h *Healthcheck) Listen() error {
 		return err
 	}
 
+	h.logger.Println("Stopped listening HTTP")
 	return nil
 }

@@ -64,7 +64,7 @@ func Get() (*DB, error) {
 }
 
 // Send data to Clickhouse
-func (d *DB) Send(reqs map[string][]interface{}) []error {
+func (d *DB) Send(reqs map[string][][]interface{}) []error {
 	errors := make([]error, 0)
 
 	for sql, v := range reqs {
@@ -84,7 +84,7 @@ func (d *DB) Send(reqs map[string][]interface{}) []error {
 		}
 
 		for _, args := range v {
-			_, err = stmt.Exec(args)
+			_, err = stmt.Exec(args...)
 			if err != nil {
 				tx.Rollback()
 				tx = nil

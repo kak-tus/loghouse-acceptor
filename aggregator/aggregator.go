@@ -114,32 +114,12 @@ func (a Aggregator) aggregate() {
 			break
 		}
 	}
-}
 
-func (a Aggregator) convert(req listener.Request) request {
-	var res request
-
-	dt := req.Time.In(time.UTC)
-
-	res.partition = dt.Format(partitionFormat)
-
-	args := []interface{}{
-		dt.Format("2006-01-02"),
-		dt.Format("2006-01-02 15:04:05"),
-		dt.Nanosecond(),
-		req.Hostname,
-	}
-
-	parsed := a.parse(req)
-	args = append(args, parsed...)
-
-	res.args = args
-
-	return res
+	a.logger.Println("Stopped aggregation")
 }
 
 func (a Aggregator) send(vals []request) {
-	byDate := make(map[string][]interface{})
+	byDate := make(map[string][][]interface{})
 
 	for i := 0; i < len(vals); i++ {
 		sql := "INSERT INTO logs.logs" + vals[i].partition +

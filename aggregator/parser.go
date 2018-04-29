@@ -4,10 +4,33 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kak-tus/loghouse-acceptor/listener"
 	"github.com/kshvakov/clickhouse"
 )
+
+func (a Aggregator) convert(req listener.Request) request {
+	var res request
+
+	dt := req.Time.In(time.UTC)
+
+	res.partition = dt.Format(partitionFormat)
+
+	args := []interface{}{
+		dt.Format("2006-01-02"),
+		dt.Format("2006-01-02 15:04:05"),
+		dt.Nanosecond(),
+		req.Hostname,
+	}
+
+	parsed := a.parse(req)
+	args = append(args, parsed...)
+
+	res.args = args
+
+	return res
+}
 
 func (a Aggregator) parse(req listener.Request) []interface{} {
 	var jsons []interface{}
