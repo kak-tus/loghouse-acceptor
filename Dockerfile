@@ -1,8 +1,10 @@
 FROM golang:1.10-alpine AS build
 
-WORKDIR /go/src/loghouse-acceptor
+WORKDIR /go/src/github.com/kak-tus/loghouse-acceptor
 COPY main.go ./
-RUN apk add --no-cache git && go get
+COPY clickhouse ./
+COPY healthcheck ./
+RUN apk add --no-cache git && go build
 
 FROM alpine:3.7
 
