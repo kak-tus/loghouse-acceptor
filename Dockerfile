@@ -2,9 +2,11 @@ FROM golang:1.10-alpine AS build
 
 WORKDIR /go/src/github.com/kak-tus/loghouse-acceptor
 COPY main.go ./
-COPY clickhouse ./
-COPY healthcheck ./
-RUN apk add --no-cache git && go build
+COPY aggregator ./aggregator/
+COPY clickhouse ./clickhouse/
+COPY healthcheck ./healthcheck/
+COPY listener ./listener/
+RUN apk add --no-cache git && go get
 
 FROM alpine:3.7
 
