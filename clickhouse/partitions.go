@@ -61,7 +61,6 @@ func (d *DB) create(partition string) {
 	_, err = d.DB.Exec(sql)
 	if err != nil {
 		d.errLogger.Println(err)
-		return
 	}
 
 	sql = "CREATE TABLE IF NOT EXISTS logs.logs" + partition +
@@ -83,7 +82,6 @@ func (d *DB) create(partition string) {
 	_, err = d.DB.Exec(sql)
 	if err != nil {
 		d.errLogger.Println(err)
-		return
 	}
 }
 
