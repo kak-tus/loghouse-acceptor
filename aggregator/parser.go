@@ -68,7 +68,7 @@ func (a Aggregator) parse(req listener.Request) []interface{} {
 				jsons = append(jsons, parsed)
 
 				// Special vendor-locked case
-				if str[from-1:from] == "j" {
+				if from > 0 && str[from-1:from] == "j" {
 					str = str[:from-1] + str[to+1:]
 				} else {
 					str = str[:from] + str[to+1:]
