@@ -325,51 +325,53 @@ func (a Aggregator) parse(req listener.Request) []interface{} {
 // Extract phone from string
 func parsePhone(str string) int {
 	phonePos := strings.Index(str, "phone")
-	if phonePos == -1 {
-		return 0
-	}
 
-	phoneFinded := ""
-	cntStart := 0
-	cntLen := 0
+	for phonePos >= 0 {
+		phoneFinded := ""
+		cntStart := 0
+		cntLen := 0
 
-	for i := phonePos + 5; i < len(str); i++ {
-		// Limit to non-digits symbols after "phone" keyword
-		if cntStart >= 4 {
-			break
+		for i := phonePos + 5; i < len(str); i++ {
+			// Limit to non-digits symbols after "phone" keyword
+			if cntStart >= 4 {
+				break
+			}
+
+			// Limit maximum phone length
+			if cntLen >= 20 {
+				break
+			}
+
+			isDigit := false
+			if str[i:i+1] == "0" || str[i:i+1] == "1" || str[i:i+1] == "2" ||
+				str[i:i+1] == "3" || str[i:i+1] == "4" || str[i:i+1] == "5" ||
+				str[i:i+1] == "6" || str[i:i+1] == "7" || str[i:i+1] == "8" ||
+				str[i:i+1] == "9" {
+				isDigit = true
+			}
+
+			// Stop after first non digit if some digits found
+			if !isDigit && cntLen > 0 {
+				break
+			}
+
+			if isDigit {
+				cntLen++
+				phoneFinded = phoneFinded + str[i:i+1]
+			} else {
+				cntStart++
+			}
 		}
 
-		// Limit maximum phone length
-		if cntLen >= 20 {
-			break
+		if len(phoneFinded) > 0 {
+			conv, err := strconv.Atoi(phoneFinded)
+			if err == nil {
+				return conv
+			}
 		}
 
-		isDigit := false
-		if str[i:i+1] == "0" || str[i:i+1] == "1" || str[i:i+1] == "2" ||
-			str[i:i+1] == "3" || str[i:i+1] == "4" || str[i:i+1] == "5" ||
-			str[i:i+1] == "6" || str[i:i+1] == "7" || str[i:i+1] == "8" ||
-			str[i:i+1] == "9" {
-			isDigit = true
-		}
-
-		// Stop after first non digit if some digits found
-		if !isDigit && cntLen > 0 {
-			break
-		}
-
-		if isDigit {
-			cntLen++
-			phoneFinded = phoneFinded + str[i:i+1]
-		} else {
-			cntStart++
-		}
-	}
-
-	if len(phoneFinded) > 0 {
-		conv, err := strconv.Atoi(phoneFinded)
-		if err == nil {
-			return conv
-		}
+		str = str[phonePos+5:]
+		phonePos = strings.Index(str, "phone")
 	}
 
 	return 0
