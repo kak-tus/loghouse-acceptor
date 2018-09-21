@@ -5,7 +5,7 @@ Accept and write logs to Clickhouse in Loghouse compatible format.
 Daemon accepts log only in syslog RFC5424 format from rsyslog. Later may be will be added
 some additinal protocols support.
 
-## Configuration
+## Daemon configuration
 
 Environment variables
 
@@ -20,6 +20,8 @@ ACC_PERIOD=60
 Batch size to send to Clickhouse immediately
 
 ACC_BATCH=10000
+
+## Rsyslog configuration
 
 Configure rsyslog to resend logs to daemon
 
