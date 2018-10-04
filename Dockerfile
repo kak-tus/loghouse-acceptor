@@ -4,10 +4,10 @@ WORKDIR /go/src/github.com/kak-tus/loghouse-acceptor
 
 COPY aggregator ./aggregator/
 COPY clickhouse ./clickhouse/
-COPY main.go ./
 COPY listener ./listener/
 COPY request ./request/
 COPY vendor ./vendor/
+COPY main.go ./
 
 RUN go install
 
