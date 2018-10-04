@@ -3,64 +3,65 @@ package clickhouse
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
 
+	"git.aqq.me/go/app/appconf"
+	"git.aqq.me/go/app/applog"
+	"git.aqq.me/go/app/event"
+	"github.com/iph0/conf"
 	"github.com/kshvakov/clickhouse"
 )
 
-// DB handle DB connection object
-type DB struct {
-	DB        *sql.DB
-	logger    *log.Logger
-	errLogger *log.Logger
+var dbObj *DB
+
+func init() {
+	event.Init.AddHandler(
+		func() error {
+			cnfMap := appconf.GetConfig()["clickhouse"]
+
+			var cnf clickhouseConfig
+			err := conf.Decode(cnfMap, &cnf)
+			if err != nil {
+				return err
+			}
+
+			db, err := sql.Open("clickhouse", "tcp://"+cnf.Addr+"?write_timeout=60")
+			if err != nil {
+				return err
+			}
+
+			err = db.Ping()
+			if err != nil {
+				exception, ok := err.(*clickhouse.Exception)
+				if ok {
+					err = fmt.Errorf("[%d] %s \n%s", exception.Code, exception.Message, exception.StackTrace)
+				}
+
+				return err
+			}
+
+			dbObj = &DB{
+				logger: applog.GetLogger().Sugar(),
+				DB:     db,
+			}
+
+			dbObj.logger.Info("Started DB")
+
+			return nil
+		},
+	)
+
+	event.Stop.AddHandler(
+		func() error {
+			dbObj.logger.Info("Stop DB")
+			dbObj.logger.Info("Stopped DB")
+			return nil
+		},
+	)
 }
 
-var db *DB
-
-// New returns new DB object
-func New() (*DB, error) {
-	d := &DB{
-		logger:    log.New(os.Stdout, "", 0),
-		errLogger: log.New(os.Stderr, "", 0),
-	}
-
-	addr := os.Getenv("CLICKHOUSE_ADDR")
-
-	var err error
-
-	d.DB, err = sql.Open("clickhouse", "tcp://"+addr+"?write_timeout=60")
-	if err != nil {
-		return nil, err
-	}
-
-	err = d.DB.Ping()
-	if err != nil {
-		exception, ok := err.(*clickhouse.Exception)
-		if ok {
-			err = fmt.Errorf("[%d] %s \n%s", exception.Code, exception.Message, exception.StackTrace)
-		}
-
-		return nil, err
-	}
-
-	return d, nil
-}
-
-// Get returns DB instance
-func Get() (*DB, error) {
-	if db != nil {
-		return db, nil
-	}
-
-	var err error
-
-	db, err = New()
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
+// GetDB returns new DB object
+func GetDB() *DB {
+	return dbObj
 }
 
 // Send data to Clickhouse
@@ -70,14 +71,14 @@ func (d *DB) Send(reqs map[string][][]interface{}) []error {
 	for sql, v := range reqs {
 		tx, err := d.DB.Begin()
 		if err != nil {
-			d.errLogger.Println(err)
+			d.logger.Error(err)
 			errors = append(errors, err)
 			continue
 		}
 
 		stmt, err := tx.Prepare(sql)
 		if err != nil {
-			d.errLogger.Println(err)
+			d.logger.Error(err)
 			errors = append(errors, err)
 			tx.Rollback()
 			continue
@@ -100,7 +101,7 @@ func (d *DB) Send(reqs map[string][][]interface{}) []error {
 		err = tx.Commit()
 		if err != nil {
 			tx.Rollback()
-			d.errLogger.Println(err)
+			d.logger.Error(err)
 			errors = append(errors, err)
 			continue
 		}

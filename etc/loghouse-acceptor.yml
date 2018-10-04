@@ -1,0 +1,16 @@
+log:
+  tag: clickhouse.loghouse-acceptor
+  level: debug
+  output: stdsep
+  format: json
+  formatConfig:
+    colors: false
+    disableTimestamp: true
+
+aggregator:
+  PartitionFormat: '2006010215'
+  Period: '${ACC_PERIOD}'
+  Batch: '${ACC_BATCH}'
+
+clickhouse:
+  Addr: '${CLICKHOUSE_ADDR}'

@@ -1,53 +1,29 @@
 package main
 
 import (
-	"sync"
-
-	"github.com/kak-tus/loghouse-acceptor/aggregator"
-	"github.com/kak-tus/loghouse-acceptor/healthcheck"
+	"git.aqq.me/go/app/appconf"
+	"git.aqq.me/go/app/launcher"
+	"github.com/iph0/conf/envconf"
+	"github.com/iph0/conf/fileconf"
 	"github.com/kak-tus/loghouse-acceptor/listener"
 )
 
+func init() {
+	fileLdr := fileconf.NewLoader("etc", "/etc")
+	envLdr := envconf.NewLoader()
+
+	appconf.RegisterLoader("file", fileLdr)
+	appconf.RegisterLoader("env", envLdr)
+
+	appconf.Require("file:loghouse-acceptor.yml")
+	appconf.Require("env:^ACC_", "env:^CLICKHOUSE_")
+}
+
 func main() {
-	syslog := listener.New()
+	launcher.Run(func() error {
+		syslog := listener.GetListener()
+		syslog.Listen()
 
-	agg, err := aggregator.New(syslog.ResChannel)
-	if err != nil {
-		panic(err)
-	}
-
-	check, err := healthcheck.New()
-	if err != nil {
-		panic(err)
-	}
-
-	var wg sync.WaitGroup
-
-	wg.Add(3)
-
-	go func() {
-		err := syslog.Listen()
-		if err != nil {
-			panic(err)
-		}
-
-		wg.Done()
-	}()
-
-	go func() {
-		agg.Aggregate()
-		wg.Done()
-	}()
-
-	go func() {
-		err := check.Listen()
-		if err != nil {
-			panic(err)
-		}
-
-		wg.Done()
-	}()
-
-	wg.Wait()
-	println("Exit")
+		return nil
+	})
 }

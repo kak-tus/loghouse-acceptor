@@ -1,5 +1,6 @@
-0.17 2018-09-22
+0.17 2018-10-04
   - Documentation fix.
+  - Refactor to use app environment.
 
 0.16 2018-05-03
   - Search phone unless finded.

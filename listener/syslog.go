@@ -1,82 +1,109 @@
 package listener
 
 import (
-	"log"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 
+	"git.aqq.me/go/app/applog"
+	"git.aqq.me/go/app/event"
+	"github.com/kak-tus/loghouse-acceptor/aggregator"
+	"github.com/kak-tus/loghouse-acceptor/request"
 	syslog "gopkg.in/mcuadros/go-syslog.v2"
 )
 
-// Listener holds listener object
-type Listener struct {
-	ResChannel chan Request
-	logger     *log.Logger
-	errLogger  *log.Logger
+var listenerObj *Listener
+
+func init() {
+	event.Init.AddHandler(
+		func() error {
+			channel := make(syslog.LogPartsChannel, 100000)
+			handler := syslog.NewChannelHandler(channel)
+
+			server := syslog.NewServer()
+			server.SetFormat(syslog.RFC5424)
+			server.SetHandler(handler)
+			server.SetTimeout(60000)
+
+			err := server.ListenTCP("0.0.0.0:3333")
+			if err != nil {
+				return err
+			}
+
+			err = server.Boot()
+			if err != nil {
+				return err
+			}
+
+			listenerObj = &Listener{
+				logger:     applog.GetLogger().Sugar(),
+				server:     server,
+				aggregator: aggregator.GetAggregator(),
+				channel:    channel,
+				m:          &sync.Mutex{},
+			}
+
+			listenerObj.logger.Info("Inited listener")
+
+			return nil
+		},
+	)
+
+	event.Stop.AddHandler(
+		func() error {
+			listenerObj.logger.Info("Stop listener")
+
+			err := listenerObj.server.Kill()
+			if err != nil {
+				return err
+			}
+
+			close(listenerObj.channel)
+			listenerObj.m.Lock()
+
+			listenerObj.aggregator.Stop()
+
+			listenerObj.logger.Info("Stopped listener")
+
+			return nil
+		},
+	)
 }
 
-// New returns new object
-func New() *Listener {
-	l := &Listener{
-		ResChannel: make(chan Request, 1000000),
-		logger:     log.New(os.Stdout, "", 0),
-		errLogger:  log.New(os.Stderr, "", 0),
-	}
-
-	return l
+// GetListener returns object
+func GetListener() *Listener {
+	return listenerObj
 }
 
 // Listen for syslog protocol
-func (l *Listener) Listen() error {
-	channel := make(syslog.LogPartsChannel, 100000)
-	handler := syslog.NewChannelHandler(channel)
+func (l *Listener) Listen() {
+	l.aggregator.Start()
 
-	server := syslog.NewServer()
-	server.SetFormat(syslog.RFC5424)
-	server.SetHandler(handler)
-	server.SetTimeout(60000)
+	go func() {
+		l.m.Lock()
 
-	err := server.ListenTCP("0.0.0.0:3333")
-	if err != nil {
-		return err
-	}
-
-	server.Boot()
-
-	stopSignal := make(chan os.Signal, 1)
-	signal.Notify(stopSignal, syscall.SIGINT, syscall.SIGTERM)
-
-	go func(channel syslog.LogPartsChannel) {
 		for {
-			select {
-			case message := <-channel:
-				parsed := Request{
-					Time:     message["timestamp"].(time.Time),
-					Level:    levels[message["severity"].(int)],
-					Tag:      message["app_name"].(string),
-					Pid:      message["proc_id"].(string),
-					Hostname: message["hostname"].(string),
-					Facility: facilities[message["facility"].(int)],
-					Msg:      strings.Trim(message["message"].(string), " "),
-				}
+			message, more := <-l.channel
 
-				l.ResChannel <- parsed
-			case <-stopSignal:
-				l.logger.Println("Got stop signal, stop listening Syslog")
-				server.Kill()
-
-				l.logger.Println("Close channel")
-				close(l.ResChannel)
-
-				return
+			if !more {
+				break
 			}
-		}
-	}(channel)
 
-	server.Wait()
-	l.logger.Println("Stopped listening Syslog")
-	return nil
+			parsed := request.Request{
+				Time:     message["timestamp"].(time.Time),
+				Level:    levels[message["severity"].(int)],
+				Tag:      message["app_name"].(string),
+				Pid:      message["proc_id"].(string),
+				Hostname: message["hostname"].(string),
+				Facility: facilities[message["facility"].(int)],
+				Msg:      strings.Trim(message["message"].(string), " "),
+			}
+
+			l.aggregator.C <- parsed
+		}
+
+		l.m.Unlock()
+	}()
+
+	go l.server.Wait()
 }

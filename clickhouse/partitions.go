@@ -1,10 +1,8 @@
 package clickhouse
 
 import (
+	"fmt"
 	"math/rand"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 )
 
@@ -12,19 +10,10 @@ import (
 func (d *DB) CreatePartitions(partitionFormat string) {
 	ticker := time.NewTicker(time.Hour + time.Second*time.Duration(rand.Intn(100)))
 
-	stopSignal := make(chan os.Signal, 1)
-	signal.Notify(stopSignal, syscall.SIGINT, syscall.SIGTERM)
-
 	for {
-		select {
-		case <-ticker.C:
-		case <-stopSignal:
-			d.logger.Println("Got stop signal, stop listening create partitions")
-			ticker.Stop()
-			return
-		}
+		<-ticker.C
 
-		d.logger.Println("Check partitions")
+		d.logger.Info("Check partitions")
 
 		// Start create partitions from some times ago
 		// to allow recreate partitions in case of stopped daemon for some time
@@ -43,45 +32,20 @@ func (d *DB) create(partition string) {
 		return
 	}
 
-	d.logger.Println("Create partition logs" + partition)
+	d.logger.Info("Create partition logs" + partition)
 
-	sql := "CREATE TABLE IF NOT EXISTS logs.logs" + partition +
-		" ON CLUSTER so" +
-		" ( date Date, timestamp DateTime, nsec UInt32, namespace String," +
-		" level String, tag String, host String, pid String, caller String," +
-		" msg String, labels Nested ( names String, values String )," +
-		" string_fields Nested ( names String, values String )," +
-		" number_fields Nested ( names String, values Float64 )," +
-		" boolean_fields Nested ( names String, values UInt8 )," +
-		" `null_fields.names` Array(String), phone UInt64, request_id String," +
-		" order_id String, subscription_id String )" +
-		" ENGINE = Distributed( 'so', 'logs', 'logs" + partition +
-		"_shard', rand() );"
+	prepared := fmt.Sprintf(sqlTable, partition, partition)
 
-	_, err = d.DB.Exec(sql)
+	_, err = d.DB.Exec(prepared)
 	if err != nil {
-		d.errLogger.Println(err)
+		d.logger.Error(err)
 	}
 
-	sql = "CREATE TABLE IF NOT EXISTS logs.logs" + partition +
-		"_shard ON CLUSTER so" +
-		" ( date Date, timestamp DateTime, nsec UInt32, namespace String," +
-		" level String, tag String, host String, pid String, caller String," +
-		" msg String, labels Nested ( names String, values String )," +
-		" string_fields Nested ( names String, values String )," +
-		" number_fields Nested ( names String, values Float64 )," +
-		" boolean_fields Nested ( names String, values UInt8 )," +
-		" `null_fields.names` Array(String), phone UInt64, request_id String," +
-		" order_id String, subscription_id String )" +
-		" ENGINE = ReplicatedMergeTree( " +
-		"'/clickhouse/tables/{shard}/logs_logs" + partition +
-		"_shard', '{replica}'," +
-		" date, ( timestamp, nsec, level, tag, host," +
-		" phone, request_id, order_id, subscription_id ), 32768 );"
+	prepared = fmt.Sprintf(sqlShard, partition, partition)
 
-	_, err = d.DB.Exec(sql)
+	_, err = d.DB.Exec(prepared)
 	if err != nil {
-		d.errLogger.Println(err)
+		d.logger.Error(err)
 	}
 }
 
@@ -92,7 +56,7 @@ func (d *DB) exists(table string) (bool, error) {
 
 	rows, err := d.DB.Query(sql)
 	if err != nil {
-		d.errLogger.Println(err)
+		d.logger.Error(err)
 		return false, err
 	}
 

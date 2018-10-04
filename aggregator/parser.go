@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kak-tus/loghouse-acceptor/listener"
+	"github.com/kak-tus/loghouse-acceptor/request"
 	"github.com/kshvakov/clickhouse"
 )
 
-func (a Aggregator) convert(req listener.Request) request {
-	var res request
+func (a *Aggregator) convert(req request.Request) requestAgg {
+	var res requestAgg
 
 	dt := req.Time.In(time.UTC)
 
-	res.partition = dt.Format(partitionFormat)
+	res.partition = dt.Format(a.config.PartitionFormat)
 
 	args := []interface{}{
 		dt.Format("2006-01-02"),
@@ -32,7 +32,7 @@ func (a Aggregator) convert(req listener.Request) request {
 	return res
 }
 
-func (a Aggregator) parse(req listener.Request) []interface{} {
+func (a *Aggregator) parse(req request.Request) []interface{} {
 	var jsons []interface{}
 
 	str := req.Msg
