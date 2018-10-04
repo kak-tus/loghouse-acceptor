@@ -3,6 +3,7 @@
   - Refactor to use app environment.
   - Vendor dependencies.
   - Alpine 3.8.
+  - Optimize docker image.
 
 0.16 2018-05-03
   - Search phone unless finded.
