@@ -5,6 +5,7 @@ import (
 	"git.aqq.me/go/app/launcher"
 	"github.com/iph0/conf/envconf"
 	"github.com/iph0/conf/fileconf"
+	"github.com/kak-tus/healthcheck"
 	"github.com/kak-tus/loghouse-acceptor/listener"
 )
 
@@ -21,6 +22,10 @@ func init() {
 
 func main() {
 	launcher.Run(func() error {
+		healthcheck.Add("/healthcheck", func() (healthcheck.State, string) {
+			return healthcheck.StatePassing, "ok"
+		})
+
 		syslog := listener.GetListener()
 		syslog.Listen()
 

@@ -42,6 +42,12 @@
   version = "v1.1.5"
 
 [[projects]]
+  name = "github.com/kak-tus/healthcheck"
+  packages = ["."]
+  revision = "5f3713b5d728cc0f1c0d5bbfbadb9bbf99e2576f"
+  version = "v0.5.0"
+
+[[projects]]
   name = "github.com/kshvakov/clickhouse"
   packages = [
     ".",
@@ -119,6 +125,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2bd23ef749bdc330ea6e0bdb231c541c7f36c85be5f6cff4a98a54de444b0c33"
+  inputs-digest = "3d755b68776b80c9d869822a288bf07f855b400db239208397a019076ddf8fcc"
   solver-name = "gps-cdcl"
   solver-version = 1

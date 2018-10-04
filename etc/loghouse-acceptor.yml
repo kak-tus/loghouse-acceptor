@@ -14,3 +14,6 @@ aggregator:
 
 clickhouse:
   Addr: '${CLICKHOUSE_ADDR}'
+
+healthcheck:
+  listen: ':9000'

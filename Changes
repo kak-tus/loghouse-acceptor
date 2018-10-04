@@ -4,6 +4,7 @@
   - Vendor dependencies.
   - Alpine 3.8.
   - Optimize docker image.
+  - Restore healthcheck.
 
 0.16 2018-05-03
   - Search phone unless finded.
