@@ -3,12 +3,13 @@ package clickhouse
 import (
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 )
 
 // CreatePartitions start create partitions
-func (d *DB) CreatePartitions(partitionFormat string) {
-	ticker := time.NewTicker(time.Hour + time.Second*time.Duration(rand.Intn(100)))
+func (d *DB) CreatePartitions(partitionFormat string, partitionType string) {
+	ticker := time.NewTicker(time.Hour + time.Second*time.Duration(rand.Intn(100)+1))
 
 	for {
 		<-ticker.C
@@ -17,11 +18,17 @@ func (d *DB) CreatePartitions(partitionFormat string) {
 
 		// Start create partitions from some times ago
 		// to allow recreate partitions in case of stopped daemon for some time
-		dt := time.Now().Add(-time.Hour * 24)
+		dt := time.Now().AddDate(0, 0, -7)
+		to := time.Now().AddDate(0, 0, 7)
 
-		for i := 1; i <= 48; i++ {
+		for dt.Before(to) {
 			d.create(dt.Format(partitionFormat))
-			dt = dt.Add(time.Hour)
+
+			if partitionType == "hourly" {
+				dt = dt.Add(time.Hour)
+			} else {
+				dt = dt.AddDate(0, 0, 1)
+			}
 		}
 	}
 }
@@ -34,16 +41,9 @@ func (d *DB) create(partition string) {
 
 	d.logger.Info("Create partition logs" + partition)
 
-	prepared := fmt.Sprintf(sqlTable, partition, partition)
+	sql := strings.Replace(d.partitionSQL, "__DATE__", partition, -1)
 
-	_, err = d.DB.Exec(prepared)
-	if err != nil {
-		d.logger.Error(err)
-	}
-
-	prepared = fmt.Sprintf(sqlShard, partition, partition)
-
-	_, err = d.DB.Exec(prepared)
+	_, err = d.DB.Exec(sql)
 	if err != nil {
 		d.logger.Error(err)
 	}

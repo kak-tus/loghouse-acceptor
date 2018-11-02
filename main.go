@@ -1,6 +1,9 @@
 package main
 
 import (
+	"math/rand"
+	"time"
+
 	"git.aqq.me/go/app/appconf"
 	"git.aqq.me/go/app/launcher"
 	"github.com/iph0/conf/envconf"
@@ -10,6 +13,8 @@ import (
 )
 
 func init() {
+	rand.Seed(time.Now().Unix())
+
 	fileLdr := fileconf.NewLoader("etc", "/etc")
 	envLdr := envconf.NewLoader()
 

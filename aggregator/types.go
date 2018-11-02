@@ -11,12 +11,14 @@ import (
 
 // Aggregator object
 type Aggregator struct {
-	logger  *zap.SugaredLogger
-	db      *clickhouse.DB
-	decoder jsoniter.API
-	config  aggregatorConfig
-	C       chan request.Request
-	m       *sync.Mutex
+	logger          *zap.SugaredLogger
+	db              *clickhouse.DB
+	decoder         jsoniter.API
+	config          aggregatorConfig
+	C               chan request.Request
+	m               *sync.Mutex
+	sql             string
+	partitionFormat string
 }
 
 type requestAgg struct {
@@ -25,15 +27,10 @@ type requestAgg struct {
 }
 
 type aggregatorConfig struct {
-	PartitionFormat string
+	PartitionType   string
+	PartitionTypes  map[string]string
 	Period          int
 	Batch           int
+	InsertQueryType string
+	InsertQueries   map[string]string
 }
-
-const sql = "INSERT INTO logs.logs%s" +
-	" (date,timestamp,nsec,host,level,tag,pid,caller,msg," +
-	"`string_fields.names`,`string_fields.values`," +
-	"`number_fields.names`,`number_fields.values`,`boolean_fields.names`," +
-	"`boolean_fields.values`,`null_fields.names`,phone,request_id,order_id," +
-	"subscription_id) " +
-	"VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);"

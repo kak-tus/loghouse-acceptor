@@ -1,6 +1,7 @@
 package aggregator
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -27,13 +28,25 @@ func init() {
 				return err
 			}
 
+			sql, ok := cnf.InsertQueries[cnf.InsertQueryType]
+			if !ok {
+				return errors.New("Unsupported table type: " + cnf.InsertQueryType)
+			}
+
+			pfmt, ok := cnf.PartitionTypes[cnf.PartitionType]
+			if !ok {
+				return errors.New("Unsupported partition type: " + cnf.PartitionType)
+			}
+
 			aggregatorObj = &Aggregator{
-				logger:  applog.GetLogger().Sugar(),
-				db:      clickhouse.GetDB(),
-				decoder: jsoniter.Config{UseNumber: true}.Froze(),
-				config:  cnf,
-				C:       make(chan request.Request, 1000000),
-				m:       &sync.Mutex{},
+				logger:          applog.GetLogger().Sugar(),
+				db:              clickhouse.GetDB(),
+				decoder:         jsoniter.Config{UseNumber: true}.Froze(),
+				config:          cnf,
+				C:               make(chan request.Request, 1000000),
+				m:               &sync.Mutex{},
+				sql:             sql,
+				partitionFormat: pfmt,
 			}
 
 			aggregatorObj.logger.Info("Inited aggregator")
@@ -60,7 +73,7 @@ func GetAggregator() *Aggregator {
 // Start aggregation
 func (a *Aggregator) Start() {
 	go a.aggregate()
-	go a.db.CreatePartitions(a.config.PartitionFormat)
+	go a.db.CreatePartitions(a.partitionFormat, a.config.PartitionType)
 }
 
 // Stop aggregation
@@ -114,8 +127,8 @@ func (a *Aggregator) send(vals []requestAgg) {
 	byDate := make(map[string][][]interface{})
 
 	for i := 0; i < len(vals); i++ {
-		prepared := fmt.Sprintf(sql, vals[i].partition)
-		byDate[sql] = append(byDate[prepared], vals[i].args)
+		prepared := fmt.Sprintf(a.sql, vals[i].partition)
+		byDate[a.sql] = append(byDate[prepared], vals[i].args)
 	}
 
 	errors := a.db.Send(byDate)

@@ -1,4 +1,4 @@
-0.17 unreleased
+v0.17.1 unreleased
   - Documentation fix.
   - Refactor to use app environment.
   - Vendor dependencies.
@@ -6,6 +6,16 @@
   - Optimize docker image.
   - Restore healthcheck.
   - Cosmetic code changes.
+  - Configurable Loghouse table type.
+    Basic (default Loghouse table) and extended (with some vendored extended
+    columns). New configuration variable ACC_TABLE_TYPE.
+  - Update iph0/conf.
+  - Configurable partitions creations.
+    Ability to create usual and sharded partitions. New configuration variables
+    ACC_SHARD_TYPE and ACC_TABLE_CLUSTER.
+    Ability to create daily or hourly partitions. New configuration variable
+    ACC_PARTITION_TYPE.
+  - Use semver version numbering.
 
 0.16 2018-05-03
   - Search phone unless finded.

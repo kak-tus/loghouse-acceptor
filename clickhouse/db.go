@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"git.aqq.me/go/app/appconf"
@@ -39,9 +40,15 @@ func init() {
 				return err
 			}
 
+			sql, ok := cnf.PartitionQueries[cnf.ShardType]
+			if !ok {
+				return errors.New("Unsupported shard type: " + cnf.ShardType)
+			}
+
 			dbObj = &DB{
-				logger: applog.GetLogger().Sugar(),
-				DB:     db,
+				logger:       applog.GetLogger().Sugar(),
+				DB:           db,
+				partitionSQL: sql,
 			}
 
 			dbObj.logger.Info("Started DB")

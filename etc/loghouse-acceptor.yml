@@ -8,12 +8,97 @@ log:
     disableTimestamp: true
 
 aggregator:
-  PartitionFormat: '2006010215'
-  Period: '${ACC_PERIOD}'
-  Batch: '${ACC_BATCH}'
+  partitionType: {_ref: {name: 'ACC_PARTITION_TYPE', default: 'hourly'}}
+  partitionTypes:
+    hourly: '2006010215'
+    daily: '20060102'
+  period: '${ACC_PERIOD}'
+  batch: '${ACC_BATCH}'
+  insertQueryType: {_ref: {name: 'ACC_TABLE_TYPE', default: 'basic'}}
+  insertQueries:
+    basic: |
+      INSERT INTO logs.logs%s
+      (date,timestamp,nsec,host,level,tag,pid,caller,msg,
+      `string_fields.names`,`string_fields.values`,
+      `number_fields.names`,`number_fields.values`,`boolean_fields.names`,
+      `boolean_fields.values`,`null_fields.names`)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+    extended: |
+      INSERT INTO logs.logs%s
+      (date,timestamp,nsec,host,level,tag,pid,caller,msg,
+      `string_fields.names`,`string_fields.values`,
+      `number_fields.names`,`number_fields.values`,`boolean_fields.names`,
+      `boolean_fields.values`,`null_fields.names`,phone,request_id,order_id,
+      subscription_id)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
 
 clickhouse:
-  Addr: '${CLICKHOUSE_ADDR}'
+  addr: '${CLICKHOUSE_ADDR}'
+  shardType: {_ref: {name: 'ACC_SHARD_TYPE', default: 'basic'}}
+  partitionQueries:
+    basic: |
+      CREATE TABLE IF NOT EXISTS logs.logs__DATE__
+      ( date Date, timestamp DateTime, nsec UInt32, namespace String,
+      level String, tag String, host String, pid String, caller String,
+      msg String, labels Nested ( names String, values String ),
+      string_fields Nested ( names String, values String ),
+      number_fields Nested ( names String, values Float64 ),
+      boolean_fields Nested ( names String, values UInt8 ),
+      `null_fields.names` Array(String) )
+      ENGINE = MergeTree( date, ( timestamp, nsec, level, tag, host ), 32768 );
+    basic_sharded: |
+      CREATE TABLE IF NOT EXISTS logs.logs__DATE__
+      ON CLUSTER ${ACC_TABLE_CLUSTER}
+      ( date Date, timestamp DateTime, nsec UInt32, namespace String,
+      level String, tag String, host String, pid String, caller String,
+      msg String, labels Nested ( names String, values String ),
+      string_fields Nested ( names String, values String ),
+      number_fields Nested ( names String, values Float64 ),
+      boolean_fields Nested ( names String, values UInt8 ),
+      `null_fields.names` Array(String) )
+      ENGINE = Distributed( '${ACC_TABLE_CLUSTER}', 'logs',
+      'logs__DATE___shard', rand() );
+
+      CREATE TABLE IF NOT EXISTS logs.logs__DATE___shard
+      ON CLUSTER ${ACC_TABLE_CLUSTER}
+      ( date Date, timestamp DateTime, nsec UInt32, namespace String,
+      level String, tag String, host String, pid String, caller String,
+      msg String, labels Nested ( names String, values String ),
+      string_fields Nested ( names String, values String ),
+      number_fields Nested ( names String, values Float64 ),
+      boolean_fields Nested ( names String, values UInt8 ),
+      `null_fields.names` Array(String) )
+      ENGINE = ReplicatedMergeTree(
+      '/clickhouse/tables/{shard}/logs_logs__DATE___shard', '{replica}',
+      date, ( timestamp, nsec, level, tag, host ), 32768 );
+    extended: |
+      CREATE TABLE IF NOT EXISTS logs.logs__DATE__
+      ON CLUSTER ${ACC_TABLE_CLUSTER}
+      ( date Date, timestamp DateTime, nsec UInt32, namespace String,
+      level String, tag String, host String, pid String, caller String,
+      msg String, labels Nested ( names String, values String ),
+      string_fields Nested ( names String, values String ),
+      number_fields Nested ( names String, values Float64 ),
+      boolean_fields Nested ( names String, values UInt8 ),
+      `null_fields.names` Array(String), phone UInt64, request_id String,
+      order_id String, subscription_id String )
+      ENGINE = Distributed( '${ACC_TABLE_CLUSTER}', 'logs',
+      'logs__DATE___shard', rand() );
+
+      CREATE TABLE IF NOT EXISTS logs.logs__DATE___shard
+      ON CLUSTER ${ACC_TABLE_CLUSTER}
+      ( date Date, timestamp DateTime, nsec UInt32, namespace String,
+      level String, tag String, host String, pid String, caller String,
+      msg String, labels Nested ( names String, values String ),
+      string_fields Nested ( names String, values String ),
+      number_fields Nested ( names String, values Float64 ),
+      boolean_fields Nested ( names String, values UInt8 ),
+      `null_fields.names` Array(String), phone UInt64, request_id String,
+      order_id String, subscription_id String )
+      ENGINE = ReplicatedMergeTree(
+      '/clickhouse/tables/{shard}/logs_logs__DATE___shard', '{replica}',
+      date, ( timestamp, nsec, level, tag, host,
+      phone, request_id, order_id, subscription_id ), 32768 );
 
 healthcheck:
   listen: ':9000'

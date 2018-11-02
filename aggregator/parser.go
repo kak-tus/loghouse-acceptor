@@ -15,7 +15,7 @@ func (a *Aggregator) convert(req request.Request) requestAgg {
 
 	dt := req.Time.In(time.UTC)
 
-	res.partition = dt.Format(a.config.PartitionFormat)
+	res.partition = dt.Format(a.partitionFormat)
 
 	args := []interface{}{
 		dt.Format("2006-01-02"),
@@ -316,7 +316,9 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 		res = append(res, [0]int{})
 	}
 
-	res = append(res, phone, requestID, orderID, subscriptionID)
+	if a.config.InsertQueryType == "extended" {
+		res = append(res, phone, requestID, orderID, subscriptionID)
+	}
 
 	return res
 }
