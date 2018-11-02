@@ -6,18 +6,20 @@
 Package conf is an extensible solution for cascading configuration. Package conf
 provides configuration processor, that can load configuration layers from
 different sources and merges them into the one configuration tree. In addition
-configuration processor can expand variables in string values and process _var
-and _include directives in resulting configuration tree (see below). Package
-conf comes with built-in configuration loaders: fileconf and envconf, and can be
-extended by third-party configuration loaders. Package conf do not watch for
-configuration changes, but you can implement this feature in the custom
-configuration loader. You can find full example in repository.
+configuration processor can expand references on configuration parameters in
+string values, and process _ref and _include directives in resulting configuration
+tree (see below). Package conf comes with built-in configuration loaders: fileconf
+and envconf, and can be extended by third-party configuration loaders. Package
+conf do not watch for configuration changes, but you can implement this feature
+in the custom configuration loader. You can find full example in repository.
 
-Configuration processor can expand variables in string values (if you need alias
-for complex structures see _var directive). Variable names can be absolute or
-relative. Relative variable names begins with "." (dot). The section, in which
-a value of relative variable will be searched, determines by number of dots in
-variable name. For example, we have a YAML file:
+Configuration processor can expand references on configuration parameters in
+string values (if you need reference on complex structures see _ref directive).
+Reference names can be absolute or relative. Relative reference names begins
+with "." (dot). The section, in which a value of relative reference will be
+searched, determines by number of dots in reference name. For example, we have
+a YAML file:
+
  myapp:
    mediaFormats: ["images", "audio", "video"]
 
@@ -30,30 +32,49 @@ variable name. For example, we have a YAML file:
        - "${..rootDir}/media/${myapp.mediaFormats.0}"
        - "${..rootDir}/media/${myapp.mediaFormats.1}"
        - "${..rootDir}/media/${myapp.mediaFormats.2}"
-After processing of the file we will get a map:
- "myapp": map[string]interface{}{
-   "mediaFormats": []interface{}{"images", "audio", "video"},
 
-   "dirs": map[string]interface{}{
-     "rootDir":      "/myapp",
+After processing of the file we will get a map:
+
+ "myapp": conf.M{
+   "mediaFormats": conf.S{"images", "audio", "video"},
+
+   "dirs": conf.M{
+     "rootDir": "/myapp",
      "templatesDir": "/myapp/templates",
      "sessionsDir": "/myapp/sessions",
 
-     "mediaDirs": []interface{}{
+     "mediaDirs": conf.S{
        "/myapp/media/images",
        "/myapp/media/audio",
        "/myapp/media/video",
      },
    },
  }
-To escape variable expansion add one more "$" symbol before variable name.
+
+To escape expansion of reference, add one more "$" symbol before reference name.
+
  templatesDir: "$${myapp.dirs.rootDir}/templates"
+
 After processing we will get:
+
  templatesDir: "${myapp.dirs.rootDir}/templates"
-Package conf supports two special directives in configuration layers: _var and
-_include. _var directive assigns configuration parameter value to another
-configuration parameter. Argument of the _var directive is a variabale name,
-absolute or relative. Here some example:
+
+Package conf supports special directives in configuration layers: _ref and
+_include. _ref directive retrieves a value by reference on configuration parameter
+and assigns this value to another configuration parameter. _ref directive can
+take three forms:
+
+ _ref: <name>
+ _ref: {name: <name>, default: <value>}
+ _ref: {firstDefined: [<name1>, ...], default: <value>}
+
+In the first form _ref directive just assings a value retrieved by reference.
+In the second form _ref directive tries to retrieve a value by reference and, if
+no value retrieved, assigns default value. And in the third form _ref directive
+tries to retrive a value from the first defined reference and, if no value
+retrieved, assigns default value. Default value in second and third forms can be
+omitted. Reference names in _ref directive can be relative or absolute.
+
  db:
    defaultOptions:
      serverPrepare: true
@@ -65,21 +86,24 @@ absolute or relative. Here some example:
        host: "stat.mydb.com"
        port: 1234
        dbname: "stat"
-       username: "stat_writer"
-       password: "stat_writer_pass"
-       options: {_var: "myapp.db.defaultOptions"}
+       username: "stat"
+       password:
+         _ref: {name: "MYAPP_DB_STAT_PASSWORD", default: "stat_pass"}
+       options: {_ref: "db.defaultOptions"}
 
      metrics:
        host: "metrics.mydb.com"
        port: 1234
        dbname: "metrics"
-       username: "metrics_writer"
-       password: "metrics_writer_pass"
-       options: {_var: "...defaultOptions"}
+       username: "metrics"
+       password:
+         _ref: {name: "MYAPP_DB_METRICS_PASSWORD", default: "metrics_pass"}
+       options: {_ref: "...defaultOptions"}
 
-_include directive loads configuration layer from external sources and assigns
-it to configuration parameter. Argument of the _include directive is a list of
+_include directive loads configuration layer from external sources and inserts
+it to configuration tree. _include directive accepts as argument a list of
 configuration locators.
+
  db:
    defaultOptions:
      serverPrepare: true

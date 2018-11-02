@@ -54,7 +54,7 @@ type FileLoader struct {
 // directories, in which the loader will search configuration files. The merge
 // priority of loaded configuration layers depends on the order of directories.
 // Layers loaded from rightmost directory have highest priority.
-func NewLoader(dirs ...string) conf.Loader {
+func NewLoader(dirs ...string) *FileLoader {
 	if len(dirs) == 0 {
 		panic(fmt.Errorf("%s: no directories specified", errPref))
 	}
@@ -64,12 +64,13 @@ func NewLoader(dirs ...string) conf.Loader {
 	}
 }
 
-// Load method loads configuration layer.
-func (p *FileLoader) Load(loc *conf.Locator) (interface{}, error) {
+// Load method loads configuration layer from YAML, JSON and TOML configuration
+// files.
+func (l *FileLoader) Load(loc *conf.Locator) (interface{}, error) {
 	var config interface{}
 	globPattern := loc.BareLocator
 
-	for _, dir := range p.dirs {
+	for _, dir := range l.dirs {
 		absPattern := filepath.Join(dir, globPattern)
 		pathes, err := filepath.Glob(absPattern)
 
@@ -161,9 +162,9 @@ func unmarshalTOML(bytes []byte) (interface{}, error) {
 	return iData, nil
 }
 
-func adaptYAMLMap(from map[interface{}]interface{}) map[string]interface{} {
+func adaptYAMLMap(from map[interface{}]interface{}) conf.M {
 	fromType := reflect.ValueOf(from).Type()
-	to := make(map[string]interface{})
+	to := make(conf.M)
 
 	for key, value := range from {
 		if value == nil {

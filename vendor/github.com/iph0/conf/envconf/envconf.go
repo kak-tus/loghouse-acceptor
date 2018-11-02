@@ -27,12 +27,12 @@ const errPref = "envconf"
 type EnvLoader struct{}
 
 // NewLoader method creates new loader instance.
-func NewLoader() conf.Loader {
+func NewLoader() *EnvLoader {
 	return &EnvLoader{}
 }
 
-// Load method loads configuration layer.
-func (p *EnvLoader) Load(loc *conf.Locator) (interface{}, error) {
+// Load method loads configuration layer from environment variables.
+func (l *EnvLoader) Load(loc *conf.Locator) (interface{}, error) {
 	reStr := loc.BareLocator
 	re, err := regexp.Compile(reStr)
 
@@ -41,7 +41,7 @@ func (p *EnvLoader) Load(loc *conf.Locator) (interface{}, error) {
 	}
 
 	envs := os.Environ()
-	config := make(map[string]interface{})
+	config := make(conf.M)
 
 	for _, envRaw := range envs {
 		pair := strings.SplitN(envRaw, "=", 2)

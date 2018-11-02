@@ -26,8 +26,8 @@
     "envconf",
     "fileconf"
   ]
-  revision = "c8135274101587ea808bd86ebb163939f978aa6b"
-  version = "v1.3"
+  revision = "2449044059ba4b98e13ce80d15162e85de2d03d0"
+  version = "v1.4.3"
 
 [[projects]]
   name = "github.com/iph0/merger"
@@ -125,6 +125,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3d755b68776b80c9d869822a288bf07f855b400db239208397a019076ddf8fcc"
+  inputs-digest = "2318d93f65bcd3c24f6de603d9085157fd3484f296bd5e879cc5f10a328a6e15"
   solver-name = "gps-cdcl"
   solver-version = 1
