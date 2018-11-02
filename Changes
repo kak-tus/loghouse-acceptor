@@ -5,6 +5,7 @@
   - Alpine 3.8.
   - Optimize docker image.
   - Restore healthcheck.
+  - Cosmetic code changes.
 
 0.16 2018-05-03
   - Search phone unless finded.

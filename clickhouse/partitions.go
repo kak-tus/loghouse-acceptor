@@ -50,11 +50,9 @@ func (d *DB) create(partition string) {
 }
 
 func (d *DB) exists(table string) (bool, error) {
-	sql := "SELECT 1 FROM system.tables " +
-		"WHERE database = 'logs'	AND name = '" +
-		table + "';"
+	sql := "SELECT 1 FROM system.tables WHERE database = 'logs'	AND name = '%s';"
 
-	rows, err := d.DB.Query(sql)
+	rows, err := d.DB.Query(fmt.Sprintf(sql, table))
 	if err != nil {
 		d.logger.Error(err)
 		return false, err
