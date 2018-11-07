@@ -10,11 +10,11 @@ import (
 type DB struct {
 	DB           *sql.DB
 	logger       *zap.SugaredLogger
-	partitionSQL string
+	partitionSQL []string
 }
 
 type clickhouseConfig struct {
 	Addr             string
 	ShardType        string
-	PartitionQueries map[string]string
+	PartitionQueries map[string][]string
 }

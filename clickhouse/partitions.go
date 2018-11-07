@@ -41,11 +41,15 @@ func (d *DB) create(partition string) {
 
 	d.logger.Info("Create partition logs" + partition)
 
-	sql := strings.Replace(d.partitionSQL, "__DATE__", partition, -1)
+	// Queries order is important: table logs.logs__DATE__ must be created last
+	// because partition existence is checked by existence of this table
+	for _, q := range d.partitionSQL {
+		sql := strings.Replace(q, "__DATE__", partition, -1)
 
-	_, err = d.DB.Exec(sql)
-	if err != nil {
-		d.logger.Error(err)
+		_, err = d.DB.Exec(sql)
+		if err != nil {
+			d.logger.Error(err)
+		}
 	}
 }
 
