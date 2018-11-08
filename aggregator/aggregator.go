@@ -128,7 +128,7 @@ func (a *Aggregator) send(vals []requestAgg) {
 
 	for i := 0; i < len(vals); i++ {
 		prepared := fmt.Sprintf(a.sql, vals[i].partition)
-		byDate[a.sql] = append(byDate[prepared], vals[i].args)
+		byDate[prepared] = append(byDate[prepared], vals[i].args)
 	}
 
 	errors := a.db.Send(byDate)
