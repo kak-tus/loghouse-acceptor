@@ -1,4 +1,4 @@
-v0.17.1 unreleased
+v0.17.1 2018-11-13
   - Documentation fix.
   - Refactor to use app environment.
   - Vendor dependencies.
