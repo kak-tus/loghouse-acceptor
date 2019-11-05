@@ -12,9 +12,3 @@ type DB struct {
 	logger       *zap.SugaredLogger
 	partitionSQL []string
 }
-
-type clickhouseConfig struct {
-	Addr             string
-	ShardType        string
-	PartitionQueries map[string][]string
-}

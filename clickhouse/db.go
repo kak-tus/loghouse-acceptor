@@ -5,70 +5,47 @@ import (
 	"errors"
 	"fmt"
 
-	"git.aqq.me/go/app/appconf"
-	"git.aqq.me/go/app/applog"
-	"git.aqq.me/go/app/event"
-	"github.com/iph0/conf"
+	"github.com/kak-tus/loghouse-acceptor/config"
 	"github.com/kshvakov/clickhouse"
+	"go.uber.org/zap"
 )
 
-var dbObj *DB
+// GetDB returns new DB object
+func NewDB(cnf config.ClickhouseConfig, log *zap.SugaredLogger) (*DB, error) {
+	db, err := sql.Open("clickhouse", "tcp://"+cnf.Addr+"?write_timeout=60")
+	if err != nil {
+		return nil, err
+	}
 
-func init() {
-	event.Init.AddHandler(
-		func() error {
-			cnfMap := appconf.GetConfig()["clickhouse"]
+	err = db.Ping()
+	if err != nil {
+		exception, ok := err.(*clickhouse.Exception)
+		if ok {
+			err = fmt.Errorf("[%d] %s \n%s", exception.Code, exception.Message, exception.StackTrace)
+		}
 
-			var cnf clickhouseConfig
-			err := conf.Decode(cnfMap, &cnf)
-			if err != nil {
-				return err
-			}
+		return nil, err
+	}
 
-			db, err := sql.Open("clickhouse", "tcp://"+cnf.Addr+"?write_timeout=60")
-			if err != nil {
-				return err
-			}
+	sql, ok := cnf.PartitionQueries[cnf.ShardType]
+	if !ok {
+		return nil, errors.New("Unsupported shard type: " + cnf.ShardType)
+	}
 
-			err = db.Ping()
-			if err != nil {
-				exception, ok := err.(*clickhouse.Exception)
-				if ok {
-					err = fmt.Errorf("[%d] %s \n%s", exception.Code, exception.Message, exception.StackTrace)
-				}
+	dbObj := &DB{
+		logger:       log,
+		DB:           db,
+		partitionSQL: sql,
+	}
 
-				return err
-			}
+	log.Info("Started DB")
 
-			sql, ok := cnf.PartitionQueries[cnf.ShardType]
-			if !ok {
-				return errors.New("Unsupported shard type: " + cnf.ShardType)
-			}
-
-			dbObj = &DB{
-				logger:       applog.GetLogger().Sugar(),
-				DB:           db,
-				partitionSQL: sql,
-			}
-
-			dbObj.logger.Info("Started DB")
-
-			return nil
-		},
-	)
-
-	event.Stop.AddHandler(
-		func() error {
-			dbObj.logger.Info("Stop DB")
-			dbObj.logger.Info("Stopped DB")
-			return nil
-		},
-	)
+	return dbObj, nil
 }
 
-// GetDB returns new DB object
-func GetDB() *DB {
-	return dbObj
+func (d *DB) Stop() {
+	d.logger.Info("Stop DB")
+	d.logger.Info("Stopped DB")
 }
 
 // Send data to Clickhouse

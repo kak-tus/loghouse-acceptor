@@ -1,12 +1,3 @@
-log:
-  tag: clickhouse.loghouse-acceptor
-  level: debug
-  output: stdsep
-  format: json
-  formatConfig:
-    colors: false
-    disableTimestamp: true
-
 aggregator:
   partitionType: {_ref: {name: 'ACC_PARTITION_TYPE', default: 'hourly'}}
   partitionTypes:

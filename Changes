@@ -1,3 +1,9 @@
+v0.18.0 2019-11-05
+  - Remove dependencies from private repository.
+  - Remove vendoring.
+  - Switch to go modules.
+  - Update go and alpine.
+
 v0.17.1 2018-11-13
   - Documentation fix.
   - Refactor to use app environment.

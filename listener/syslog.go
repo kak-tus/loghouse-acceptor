@@ -5,74 +5,66 @@ import (
 	"sync"
 	"time"
 
-	"git.aqq.me/go/app/applog"
-	"git.aqq.me/go/app/event"
 	"github.com/kak-tus/loghouse-acceptor/aggregator"
+	"github.com/kak-tus/loghouse-acceptor/config"
 	"github.com/kak-tus/loghouse-acceptor/request"
+	"go.uber.org/zap"
 	syslog "gopkg.in/mcuadros/go-syslog.v2"
 )
 
-var listenerObj *Listener
+func NewListener(cnf *config.Config, log *zap.SugaredLogger) (*Listener, error) {
+	channel := make(syslog.LogPartsChannel, 100000)
+	handler := syslog.NewChannelHandler(channel)
 
-func init() {
-	event.Init.AddHandler(
-		func() error {
-			channel := make(syslog.LogPartsChannel, 100000)
-			handler := syslog.NewChannelHandler(channel)
+	server := syslog.NewServer()
+	server.SetFormat(syslog.RFC5424)
+	server.SetHandler(handler)
+	server.SetTimeout(60000)
 
-			server := syslog.NewServer()
-			server.SetFormat(syslog.RFC5424)
-			server.SetHandler(handler)
-			server.SetTimeout(60000)
+	err := server.ListenTCP("0.0.0.0:3333")
+	if err != nil {
+		return nil, err
+	}
 
-			err := server.ListenTCP("0.0.0.0:3333")
-			if err != nil {
-				return err
-			}
+	err = server.Boot()
+	if err != nil {
+		return nil, err
+	}
 
-			err = server.Boot()
-			if err != nil {
-				return err
-			}
+	agg, err := aggregator.NewAggregator(cnf, log)
+	if err != nil {
+		return nil, err
+	}
 
-			listenerObj = &Listener{
-				logger:     applog.GetLogger().Sugar(),
-				server:     server,
-				aggregator: aggregator.GetAggregator(),
-				channel:    channel,
-				m:          &sync.Mutex{},
-			}
+	listenerObj := &Listener{
+		logger:     log,
+		server:     server,
+		aggregator: agg,
+		channel:    channel,
+		m:          &sync.Mutex{},
+	}
 
-			listenerObj.logger.Info("Inited listener")
+	listenerObj.logger.Info("Inited listener")
 
-			return nil
-		},
-	)
-
-	event.Stop.AddHandler(
-		func() error {
-			listenerObj.logger.Info("Stop listener")
-
-			err := listenerObj.server.Kill()
-			if err != nil {
-				return err
-			}
-
-			close(listenerObj.channel)
-			listenerObj.m.Lock()
-
-			listenerObj.aggregator.Stop()
-
-			listenerObj.logger.Info("Stopped listener")
-
-			return nil
-		},
-	)
+	return listenerObj, nil
 }
 
-// GetListener returns object
-func GetListener() *Listener {
-	return listenerObj
+func (l *Listener) Stop() error {
+	l.logger.Info("Stop listener")
+
+	err := l.server.Kill()
+	if err != nil {
+		return err
+	}
+
+	close(l.channel)
+	l.m.Lock()
+
+	l.aggregator.Stop()
+
+	l.logger.Info("Stopped listener")
+
+	return nil
 }
 
 // Listen for syslog protocol

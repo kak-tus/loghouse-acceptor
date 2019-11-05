@@ -6,79 +6,59 @@ import (
 	"sync"
 	"time"
 
-	"git.aqq.me/go/app/appconf"
-	"git.aqq.me/go/app/applog"
-	"git.aqq.me/go/app/event"
-	"github.com/iph0/conf"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/kak-tus/loghouse-acceptor/clickhouse"
+	"github.com/kak-tus/loghouse-acceptor/config"
 	"github.com/kak-tus/loghouse-acceptor/request"
+	"go.uber.org/zap"
 )
 
-var aggregatorObj *Aggregator
+func NewAggregator(cnfFull *config.Config, log *zap.SugaredLogger) (*Aggregator, error) {
+	cnf := cnfFull.Aggregator
 
-func init() {
-	event.Init.AddHandler(
-		func() error {
-			cnfMap := appconf.GetConfig()["aggregator"]
+	sql, ok := cnf.InsertQueries[cnf.InsertQueryType]
+	if !ok {
+		return nil, errors.New("Unsupported table type: " + cnf.InsertQueryType)
+	}
 
-			var cnf aggregatorConfig
-			err := conf.Decode(cnfMap, &cnf)
-			if err != nil {
-				return err
-			}
+	pfmt, ok := cnf.PartitionTypes[cnf.PartitionType]
+	if !ok {
+		return nil, errors.New("Unsupported partition type: " + cnf.PartitionType)
+	}
 
-			sql, ok := cnf.InsertQueries[cnf.InsertQueryType]
-			if !ok {
-				return errors.New("Unsupported table type: " + cnf.InsertQueryType)
-			}
+	ch, err := clickhouse.NewDB(cnfFull.Clickhouse, log)
+	if err != nil {
+		return nil, err
+	}
 
-			pfmt, ok := cnf.PartitionTypes[cnf.PartitionType]
-			if !ok {
-				return errors.New("Unsupported partition type: " + cnf.PartitionType)
-			}
+	aggregatorObj := &Aggregator{
+		logger:          log,
+		db:              ch,
+		decoder:         jsoniter.Config{UseNumber: true}.Froze(),
+		config:          cnf,
+		C:               make(chan request.Request, 1000000),
+		m:               &sync.Mutex{},
+		sql:             sql,
+		partitionFormat: pfmt,
+	}
 
-			aggregatorObj = &Aggregator{
-				logger:          applog.GetLogger().Sugar(),
-				db:              clickhouse.GetDB(),
-				decoder:         jsoniter.Config{UseNumber: true}.Froze(),
-				config:          cnf,
-				C:               make(chan request.Request, 1000000),
-				m:               &sync.Mutex{},
-				sql:             sql,
-				partitionFormat: pfmt,
-			}
-
-			aggregatorObj.logger.Info("Inited aggregator")
-
-			return nil
-		},
-	)
-
-	event.Stop.AddHandler(
-		func() error {
-			aggregatorObj.logger.Info("Stop aggregator")
-			aggregatorObj.m.Lock()
-			aggregatorObj.logger.Info("Stopped aggregator")
-			return nil
-		},
-	)
-}
-
-// GetAggregator returns object
-func GetAggregator() *Aggregator {
-	return aggregatorObj
+	return aggregatorObj, nil
 }
 
 // Start aggregation
 func (a *Aggregator) Start() {
 	go a.aggregate()
 	go a.db.CreatePartitions(a.partitionFormat, a.config.PartitionType)
+	a.logger.Info("Inited aggregator")
 }
 
 // Stop aggregation
 func (a *Aggregator) Stop() {
+	a.logger.Info("Stop aggregator")
 	close(a.C)
+	a.db.Stop()
+	a.m.Lock()
+	a.logger.Info("Stopped aggregator")
 }
 
 func (a *Aggregator) aggregate() {

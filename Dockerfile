@@ -1,17 +1,19 @@
-FROM golang:1.10.3-alpine3.8 AS build
+FROM golang:1.13.1-alpine3.10 AS build
 
-WORKDIR /go/src/github.com/kak-tus/loghouse-acceptor
+WORKDIR /go/loghouse-acceptor
 
-COPY aggregator ./aggregator/
-COPY clickhouse ./clickhouse/
-COPY listener ./listener/
-COPY request ./request/
-COPY vendor ./vendor/
-COPY main.go ./
+COPY aggregator ./aggregator
+COPY clickhouse ./clickhouse
+COPY config ./config
+COPY go.mod .
+COPY go.sum .
+COPY listener ./listener
+COPY main.go .
+COPY request ./request
 
-RUN go install
+RUN go build -o /go/bin/loghouse-acceptor
 
-FROM alpine:3.8
+FROM alpine:3.10
 
 RUN \
   apk add --no-cache \

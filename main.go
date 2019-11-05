@@ -1,39 +1,59 @@
 package main
 
 import (
-	"math/rand"
-	"time"
+	"net/http"
+	"os"
+	"os/signal"
 
-	"git.aqq.me/go/app/appconf"
-	"git.aqq.me/go/app/launcher"
-	"github.com/iph0/conf/envconf"
-	"github.com/iph0/conf/fileconf"
 	"github.com/kak-tus/healthcheck"
+	"github.com/kak-tus/loghouse-acceptor/config"
 	"github.com/kak-tus/loghouse-acceptor/listener"
+	"go.uber.org/zap"
 )
 
-func init() {
-	rand.Seed(time.Now().Unix())
-
-	fileLdr := fileconf.NewLoader("etc", "/etc")
-	envLdr := envconf.NewLoader()
-
-	appconf.RegisterLoader("file", fileLdr)
-	appconf.RegisterLoader("env", envLdr)
-
-	appconf.Require("file:loghouse-acceptor.yml")
-	appconf.Require("env:^ACC_", "env:^CLICKHOUSE_")
-}
-
 func main() {
-	launcher.Run(func() error {
-		healthcheck.Add("/healthcheck", func() (healthcheck.State, string) {
-			return healthcheck.StatePassing, "ok"
-		})
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
 
-		syslog := listener.GetListener()
-		syslog.Listen()
+	log := logger.Sugar()
 
-		return nil
+	cnf, err := config.NewConfig()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	hlth := healthcheck.NewHandler()
+
+	hlth.Add("/healthcheck", func() (healthcheck.State, string) {
+		return healthcheck.StatePassing, "ok"
 	})
+
+	go func() {
+		err := http.ListenAndServe(cnf.Healthcheck.Listen, hlth)
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
+
+	lstn, err := listener.NewListener(cnf, log)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	lstn.Listen()
+
+	st := make(chan os.Signal, 1)
+	signal.Notify(st, os.Interrupt)
+
+	<-st
+	log.Info("Stop")
+
+	err = lstn.Stop()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	_ = log.Sync()
 }
