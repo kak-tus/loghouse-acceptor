@@ -84,7 +84,7 @@ func (a *Aggregator) aggregate() {
 			start = time.Now()
 		}
 
-		if time.Now().Sub(start).Seconds() >= float64(a.config.Period) {
+		if time.Since(start).Seconds() >= float64(a.config.Period) {
 			a.send(vals[0:count])
 			a.logger.Infof("Sended %d values", count)
 			count = 0
@@ -112,10 +112,8 @@ func (a *Aggregator) send(vals []requestAgg) {
 	}
 
 	errors := a.db.Send(byDate)
-	if errors != nil {
-		for _, err := range errors {
-			a.logger.Error(err)
-		}
+	for _, err := range errors {
+		a.logger.Error(err)
 	}
 
 	// Clean

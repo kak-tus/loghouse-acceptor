@@ -45,9 +45,9 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 			jsons = append(jsons, parsed)
 			str = ""
 		}
-	} else if strings.Index(str, "{") >= 0 {
+	} else if strings.Contains(str, "{") {
 		// Special vendor-locked case
-		if strings.Index(str, " c{") >= 0 && str[len(str)-1:] == "}" {
+		if strings.Contains(str, " c{") && str[len(str)-1:] == "}" {
 			from := strings.Index(str, " c{")
 
 			var parsed interface{}
@@ -58,7 +58,7 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 			}
 		}
 
-		if strings.Index(str, "{") >= 0 && strings.LastIndex(str, "}") >= 0 {
+		if strings.Contains(str, "{") && strings.LastIndex(str, "}") >= 0 {
 			from := strings.Index(str, "{")
 			to := strings.LastIndex(str, "}")
 
@@ -154,32 +154,32 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 			for key, val := range mapped {
 				// Some vendor-locked logic
 				if key == "phone" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						conv, err := strconv.Atoi(val.(string))
+						conv, err := strconv.Atoi(cnv)
 						if err == nil {
 							phone = conv
 							continue
 						}
 					case json.Number:
-						conv, err := strconv.Atoi(string(val.(json.Number)))
+						conv, err := strconv.Atoi(string(cnv))
 						if err == nil {
 							phone = conv
 							continue
 						}
 					}
 				} else if key == "request_id" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						requestID = val.(string)
+						requestID = cnv
 						continue
 					}
 				} else if key == "id" {
 					_, ok := mapped["request_id"]
 					if !ok {
-						switch val.(type) {
+						switch cnv := val.(type) {
 						case string:
-							requestID = val.(string)
+							requestID = cnv
 							continue
 						}
 					}
@@ -187,36 +187,34 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 					_, ok1 := mapped["request_id"]
 					_, ok2 := mapped["id"]
 					if !ok1 && !ok2 {
-						switch val.(type) {
+						switch cnv := val.(type) {
 						case string:
-							requestID = val.(string)
+							requestID = cnv
 							continue
 						}
 					}
 				} else if key == "order_id" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						orderID = val.(string)
+						orderID = cnv
 						continue
 					}
 				} else if key == "subscription_id" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						subscriptionID = val.(string)
+						subscriptionID = cnv
 						continue
 					}
 				} else if key == "level" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						conv := val.(string)
-
-						if conv == "DEBUG" || conv == "INFO" ||
-							conv == "WARN" || conv == "ERROR" ||
-							conv == "FATAL" {
-							level = conv
-						} else if conv == "TRACE" {
+						if cnv == "DEBUG" || cnv == "INFO" ||
+							cnv == "WARN" || cnv == "ERROR" ||
+							cnv == "FATAL" {
+							level = cnv
+						} else if cnv == "TRACE" {
 							level = "DEBUG"
-						} else if conv == "PANIC" {
+						} else if cnv == "PANIC" {
 							level = "FATAL"
 						} else {
 							level = "DEBUG"
@@ -225,35 +223,35 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 						continue
 					}
 				} else if key == "tag" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						tag = val.(string)
+						tag = cnv
 						continue
 					}
 				} else if key == "pid" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						pid = val.(string)
+						pid = cnv
 						continue
 					case json.Number:
-						pid = string(val.(json.Number))
+						pid = string(cnv)
 						continue
 					}
 				} else if key == "caller" {
-					switch val.(type) {
+					switch cnv := val.(type) {
 					case string:
-						caller = val.(string)
+						caller = cnv
 						continue
 					}
 				}
 
-				switch val.(type) {
+				switch cnv := val.(type) {
 				case string:
 					stringNames = append(stringNames, key)
-					stringVals = append(stringVals, val.(string))
+					stringVals = append(stringVals, cnv)
 				case bool:
 					var conv uint8
-					if val.(bool) {
+					if cnv {
 						conv = 1
 					} else {
 						conv = 0
@@ -262,14 +260,14 @@ func (a *Aggregator) parse(req request.Request) []interface{} {
 					boolNames = append(boolNames, key)
 					boolVals = append(boolVals, conv)
 				case json.Number:
-					if strings.Index(string(val.(json.Number)), ".") >= 0 {
-						conv, err := strconv.ParseFloat(string(val.(json.Number)), 64)
+					if strings.Contains(string(cnv), ".") {
+						conv, err := strconv.ParseFloat(string(cnv), 64)
 						if err == nil {
 							numNames = append(numNames, key)
 							numVals = append(numVals, conv)
 						}
 					} else {
-						conv, err := strconv.Atoi(string(val.(json.Number)))
+						conv, err := strconv.Atoi(string(cnv))
 						if err == nil {
 							numNames = append(numNames, key)
 							numVals = append(numVals, float64(conv))
